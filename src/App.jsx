@@ -14,16 +14,18 @@ function App() {
   const [currentScreen, setCurrentScreen] = useState("home");
   const [examHistory, setExamHistory] = useState([]);
   const [currentExamConfig, setCurrentExamConfig] = useState(FULL_EXAM_SECTIONS);
+  const [initialLevel, setInitialLevel] = useState(5); // רמה התחלתית
+  const [practiceLevelInput, setPracticeLevelInput] = useState(5); // קלט מהמשתמש
 
-  // התחלת מבחן מלא
   const startFullSimulation = () => {
+    setInitialLevel(5); // מבחן מלא תמיד מתחיל ברמה 5
     setCurrentExamConfig(FULL_EXAM_SECTIONS);
     setCurrentScreen("simulation");
   };
 
-  // התחלת תרגול ממוקד (פרק אחד בלבד)
-  const startPractice = (type, title, qCount, minutes) => {
-    setCurrentExamConfig([{ id: 1, type, qCount, minutes, title: `תרגול ממוקד: ${title}` }]);
+  const startPracticeConfig = (config) => {
+    setInitialLevel(practiceLevelInput); // תרגול מתחיל ברמה שהמשתמש בחר
+    setCurrentExamConfig(config);
     setCurrentScreen("simulation");
   };
 
@@ -44,7 +46,7 @@ function App() {
               התחל סימולציה מלאה (מבחן שלם)
             </button>
             <button className="start-btn secondary-btn" onClick={() => setCurrentScreen("practice_menu")}>
-              תרגול ממוקד לפי פרק
+              אימון ממוקד לפי פרק
             </button>
           </div>
         </div>
@@ -53,25 +55,55 @@ function App() {
       {currentScreen === "practice_menu" && (
         <div className="welcome-screen">
           <div className="header-logo">AMIRnet - Practice</div>
-          <h2>בחר את נושא התרגול</h2>
+          <h2>הגדרות תרגול</h2>
+          
+          <div className="level-selector-box">
+            <label>בחר רמה התחלתית (1-10):</label>
+            <input 
+              type="number" 
+              min="1" max="10" 
+              value={practiceLevelInput} 
+              onChange={(e) => setPracticeLevelInput(Number(e.target.value))}
+            />
+          </div>
+
           <div className="action-buttons-container column-layout">
-            <button className="start-btn practice-btn" onClick={() => startPractice("sentence-completion", "השלמת משפטים", 4, 4)}>
-              השלמת משפטים (4 דקות)
+            <button className="start-btn practice-btn" onClick={() => startPracticeConfig([
+              { id: 1, type: "sentence-completion", qCount: 15, minutes: 15, title: "השלמת משפטים - תרגול" }
+            ])}>
+              השלמת משפטים (15 שאלות)
             </button>
-            <button className="start-btn practice-btn" onClick={() => startPractice("restatement", "ניסוח מחדש", 3, 6)}>
-              ניסוח מחדש (6 דקות)
+            
+            <button className="start-btn practice-btn" onClick={() => startPracticeConfig([
+              { id: 1, type: "restatement", qCount: 15, minutes: 15, title: "ניסוח מחדש - תרגול" }
+            ])}>
+              ניסוח מחדש (15 שאלות)
             </button>
-            <button className="start-btn practice-btn" onClick={() => startPractice("reading", "הבנת הנקרא", 5, 15)}>
-              הבנת הנקרא (15 דקות)
+            
+            {/* שני פרקי קריאה - האדפטיביות תישמר ביניהם! */}
+            <button className="start-btn practice-btn" onClick={() => startPracticeConfig([
+              { id: 1, type: "reading", qCount: 5, minutes: 15, title: "הבנת הנקרא - טקסט 1" },
+              { id: 2, type: "reading", qCount: 5, minutes: 15, title: "הבנת הנקרא - טקסט 2" }
+            ])}>
+              הבנת הנקרא (2 טקסטים אדפטיביים)
+            </button>
+
+            <button className="start-btn practice-btn vocab-btn" onClick={() => setCurrentScreen("vocab_practice")}>
+              📖 אימון אוצר מילים (פתוח)
             </button>
           </div>
           <button className="back-btn" onClick={() => setCurrentScreen("home")}>חזור למסך הראשי</button>
         </div>
       )}
 
+      {currentScreen === "vocab_practice" && (
+        <VocabPractice level={practiceLevelInput} onBack={() => setCurrentScreen("practice_menu")} />
+      )}
+
       {currentScreen === "simulation" && (
         <SimulationEngine 
           examConfig={currentExamConfig} 
+          initialLevel={initialLevel}
           onFinish={finishExam} 
           onCancel={() => setCurrentScreen("home")} 
         />
@@ -85,18 +117,102 @@ function App() {
 }
 
 // ==========================================
-// מנוע הסימולציה (עודכן כדי לקבל קונפיגורציה דינמית)
+// מסך אימון אוצר מילים (Vocab Practice)
 // ==========================================
-function SimulationEngine({ examConfig, onFinish, onCancel }) {
+function VocabPractice({ level, onBack }) {
+  const [wordData, setWordData] = useState(null);
+  const [userInput, setUserInput] = useState("");
+  const [showResult, setShowResult] = useState(false);
+  const [isCorrect, setIsCorrect] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const loadNewWord = async () => {
+    setLoading(true);
+    setShowResult(false);
+    setUserInput("");
+    try {
+      const res = await fetch(`https://amirnet-api.onrender.com/generate/vocab/${level}`);
+      const data = await res.json();
+      setWordData(data.data);
+    } catch (err) {
+      console.error(err);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadNewWord();
+  }, [level]);
+
+  const checkAnswer = () => {
+    const normInput = userInput.trim();
+    const normAnswer = wordData.translation.trim();
+    // בודק אם מה שהמשתמש כתב מוכל בתשובה או להפך כדי לסלוח על הטיות
+    if (normAnswer.includes(normInput) || normInput.includes(normAnswer)) {
+      setIsCorrect(true);
+    } else {
+      setIsCorrect(false);
+    }
+    setShowResult(true);
+  };
+
+  return (
+    <div className="welcome-screen">
+      <div className="vocab-container">
+        <div className="exam-header" style={{borderRadius: "8px", marginBottom: "20px"}}>
+          <h2>אימון אוצר מילים - רמה {level}</h2>
+        </div>
+        
+        {loading ? (
+          <div className="spinner"></div>
+        ) : wordData ? (
+          <>
+            <div className="vocab-word">{wordData.word}</div>
+            <input 
+              className="vocab-input"
+              type="text" 
+              placeholder="הקלד את הפירוש בעברית..."
+              value={userInput}
+              onChange={(e) => setUserInput(e.target.value)}
+              disabled={showResult}
+              onKeyDown={(e) => e.key === 'Enter' && !showResult && checkAnswer()}
+            />
+            
+            {!showResult ? (
+              <button className="start-btn primary-btn" onClick={checkAnswer} disabled={!userInput}>
+                בדוק אותי
+              </button>
+            ) : (
+              <div className={`vocab-result ${isCorrect ? 'vocab-correct' : 'vocab-incorrect'}`}>
+                {isCorrect ? '✅ מצוין!' : '❌ לא בדיוק...'}
+                <br />
+                <strong>הפירוש הנכון: </strong> {wordData.translation}
+              </div>
+            )}
+
+            {showResult && (
+              <button className="next-word-btn" onClick={loadNewWord}>
+                מילה הבאה ➔
+              </button>
+            )}
+          </>
+        ) : null}
+      </div>
+      <button className="back-btn" onClick={onBack} style={{marginTop: "30px"}}>חזור לתרגולים</button>
+    </div>
+  );
+}
+
+// ==========================================
+// מנוע הסימולציה
+// ==========================================
+function SimulationEngine({ examConfig, initialLevel, onFinish, onCancel }) {
   const [sectionIdx, setSectionIdx] = useState(0);
-  const [currentLevel, setCurrentLevel] = useState(5);
-  
+  const [currentLevel, setCurrentLevel] = useState(initialLevel);
   const [questions, setQuestions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  
   const [timeLeft, setTimeLeft] = useState(0);
   const [currentQIdx, setCurrentQIdx] = useState(0);
-  
   const [answers, setAnswers] = useState({});
   const [flagged, setFlagged] = useState({});
   const [history, setHistory] = useState([]);
@@ -267,7 +383,7 @@ function SimulationEngine({ examConfig, onFinish, onCancel }) {
 }
 
 // ==========================================
-// מסך התחקור (Debriefing) החדש!
+// מסך התחקור
 // ==========================================
 function DebriefScreen({ history, onHome }) {
   let totalQuestions = 0;
@@ -278,7 +394,6 @@ function DebriefScreen({ history, onHome }) {
     totalCorrect += section.correctCount;
   });
 
-  // חישוב ציון אמירנט (סולם 50-150)
   const finalScore = totalQuestions > 0 ? 50 + Math.round((totalCorrect / totalQuestions) * 100) : 50;
 
   return (
@@ -304,18 +419,14 @@ function DebriefScreen({ history, onHome }) {
                 return (
                   <div key={qIdx} className="debrief-question-card">
                     <p className="d-q-number">שאלה {qIdx + 1}</p>
-                    
-                    {/* הצגת השאלה בהתאם לסוג */}
                     {section.sectionConfig.type === 'reading' && <p className="d-q-text"><strong>טקסט:</strong> {q.readingText}</p>}
-                    <p className="d-q-text">
-                      {q.original_sentence || q.sentence || q.question}
-                    </p>
+                    <p className="d-q-text">{q.original_sentence || q.sentence || q.question}</p>
 
                     <div className="d-options">
                       {q.options.map((opt, oIdx) => {
                         let statusClass = "d-opt-neutral";
-                        if (opt.isCorrect) statusClass = "d-opt-correct"; // התשובה הנכונה תמיד ירוקה
-                        else if (userAnsIdx === oIdx && !opt.isCorrect) statusClass = "d-opt-wrong"; // מה שסימנת וטעינו אדום
+                        if (opt.isCorrect) statusClass = "d-opt-correct";
+                        else if (userAnsIdx === oIdx && !opt.isCorrect) statusClass = "d-opt-wrong";
 
                         return (
                           <div key={oIdx} className={`d-opt ${statusClass}`}>
