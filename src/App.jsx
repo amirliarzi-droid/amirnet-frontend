@@ -131,8 +131,7 @@ function VocabPractice({ level, onBack }) {
     setShowResult(false);
     setUserInput("");
     try {
-      const res = await fetch(`https://amirnet-api.onrender.com/generate/vocab/${level}`);
-      const data = await res.json();
+      const res = await fetch(`https://amirnet-api.onrender.com/generate/vocab/${level}?t=${Date.now()}`);      const data = await res.json();
       setWordData(data.data);
     } catch (err) {
       console.error(err);
